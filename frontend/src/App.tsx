@@ -6,6 +6,7 @@ import { AppLayout } from '@/components/AppLayout'
 import { DashboardPage } from '@/pages/admin/DashboardPage'
 import { RefereesPage } from '@/pages/admin/RefereesPage'
 import { TournamentsPage } from '@/pages/admin/TournamentsPage'
+import { AcceptInvitePage } from '@/pages/AcceptInvitePage'
 import { LoginPage } from '@/pages/LoginPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { ConvocationsPage } from '@/pages/referee/ConvocationsPage'
@@ -21,6 +22,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/connexion" element={<LoginPage />} />
+      <Route path="/invitation" element={<AcceptInvitePage />} />
 
       <Route element={<RequireAuth />}>
         <Route element={<AppLayout />}>

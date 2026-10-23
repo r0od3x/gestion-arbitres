@@ -3,7 +3,7 @@
 Complète `PROJECT_SPEC.md` : ce document enregistre **ce qui est construit** et
 **les décisions prises en cours de route**, avec leurs raisons.
 
-Dernière mise à jour : 23 octobre 2026.
+Dernière mise à jour : 23 octobre 2026 (jalon M2 terminé).
 
 ---
 
@@ -12,24 +12,39 @@ Dernière mise à jour : 23 octobre 2026.
 | Jalon | État | Détail |
 |-------|------|--------|
 | **M1 — Fondations** | ✅ terminé | Squelette, config, Alembic, santé, auth, rôles, amorçage, tests |
-| **M2 — Arbitres** | ⬜ à faire | Invitation, liste/filtres, édition, désactivation, consentement WhatsApp |
+| **M2 — Arbitres** | ✅ terminé | Invitation, liste/filtres, édition, désactivation, consentement WhatsApp |
 | **M3 — Tournois & désignations** | ⬜ à faire | CRUD, transitions de statut, sélection des arbitres, confirmer/décliner |
 | **M4 — Notifications WhatsApp** | 🟡 socle prêt | Interface fournisseur, provider Cloud API, worker et suivi de livraison faits ; reste l'endpoint `convocations/send` et le webhook HTTP |
 | **M5 — Finitions** | ⬜ à faire | Boutons de réponse WhatsApp, rappels, journal d'audit, export CSV |
 
 ### Ce qui fonctionne aujourd'hui
 
-- `POST /api/v1/auth/login` · `/refresh` · `/logout` · `/accept-invite` · `GET /auth/me`
-- `GET /api/v1/healthz` · `/readyz`
-- Les cinq tables du modèle de données, créées par une migration Alembic
-- Worker ARQ et envoi de notifications avec relances (testés hors HTTP)
-- SPA React : connexion, gardes de route par rôle, mise en page, pages d'attente
+**Authentification** — `POST /auth/login` · `/refresh` · `/logout` ·
+`/accept-invite` · `GET /auth/me`, plus `GET /healthz` · `/readyz`.
 
-Vérifié de bout en bout sur un serveur réel : connexion → cookie `refresh_token`
-httpOnly → appel authentifié → rafraîchissement du jeton.
+**Arbitres (administrateur)** — `GET /referees` (filtres grade, ville, statut,
+recherche texte, pagination), `POST /referees/invite`, `GET` et `PATCH
+/referees/{id}`, `POST /referees/{id}/deactivate` · `/activate` ·
+`/invite/resend`.
 
-**Qualité** : 64 tests backend, 15 tests frontend, `ruff` et `mypy --strict`
-sans erreur, `alembic check` sans dérive.
+**Arbitres (soi-même)** — `GET /me`, `GET` et `PATCH /me/profile`.
+
+**Hors HTTP** — les cinq tables via une migration Alembic ; worker ARQ et envoi
+de notifications avec relances.
+
+**SPA React** — connexion, activation de compte par lien d'invitation, gardes
+de route par rôle, liste des arbitres filtrable et paginée, formulaire
+d'invitation avec lien à transmettre, profil arbitre modifiable avec
+consentement WhatsApp.
+
+Parcours vérifié de bout en bout sur un serveur réel : l'administrateur invite
+un arbitre (téléphone normalisé en E.164) → l'arbitre active son compte via le
+lien → il complète son profil et donne son consentement WhatsApp → ses
+tentatives de changer son grade (422) et d'accéder aux routes admin (403) sont
+refusées → l'administrateur le désactive → il ne peut plus se connecter (401).
+
+**Qualité** : 99 tests backend, 30 tests frontend, `ruff` et `mypy --strict`
+sans erreur, `eslint` et `prettier` sans erreur, `alembic check` sans dérive.
 
 ---
 
@@ -157,6 +172,68 @@ ne change pas.
 
 ---
 
+### 2.14 Le consentement WhatsApp n'est jamais donné par un administrateur
+
+`RefereeInviteRequest` ne contient pas `whatsapp_opt_in` : un arbitre invité
+démarre toujours à `false`. Seul l'arbitre peut le passer à `true`, depuis son
+profil, et `whatsapp_opt_in_at` est horodaté à cet instant (effacé au retrait).
+
+*Pourquoi* : le consentement doit venir de la personne concernée (loi 09-08 /
+CNDP). Un administrateur qui cocherait la case à sa place rendrait la preuve de
+consentement sans valeur. `RefereeAdminUpdate` accepte `whatsapp_opt_in`
+uniquement pour permettre un **retrait** à la demande de l'arbitre.
+
+### 2.15 Deux schémas de mise à jour distincts, pas un seul filtré
+
+`RefereeAdminUpdate` et `RefereeProfileUpdate` sont deux schémas séparés, tous
+deux en `extra="forbid"`.
+
+*Pourquoi* : le second ne contient ni `grade`, ni `license_number`, ni
+`notes_admin`. Un arbitre qui tente de se promouvoir reçoit un 422 explicite
+plutôt qu'un succès où le champ aurait été silencieusement ignoré. L'écart de
+privilèges est visible dans le type, pas enfoui dans une liste de champs
+autorisés.
+
+### 2.16 Aucune route « soi-même » ne prend d'identifiant
+
+Les routes de `api/v1/me.py` résolvent le profil depuis le jeton via
+`RefereeUser`.
+
+*Pourquoi* : sans identifiant dans l'URL, il n'existe aucun chemin de code par
+lequel un arbitre pourrait lire ou modifier le profil d'un autre. La protection
+est structurelle, pas une vérification qu'on pourrait oublier.
+
+### 2.17 Désactivation plutôt que suppression
+
+`POST /referees/{id}/deactivate` bascule `users.is_active`; aucune route ne
+supprime d'arbitre.
+
+*Pourquoi* : les convocations passées référencent l'arbitre. Supprimer la ligne
+détruirait l'historique ou casserait les clés étrangères. Un compte désactivé ne
+peut plus se connecter et les jetons existants sont rejetés au coup suivant.
+
+### 2.18 Le lien d'invitation est retourné à l'administrateur
+
+`POST /referees/invite` répond avec `invite_url`, que l'interface affiche et
+permet de copier.
+
+*Pourquoi* : l'envoi d'e-mails n'est pas encore en place, et attendre cette
+brique bloquerait tout le parcours d'intégration. L'administrateur transmet le
+lien par le canal de son choix. **Limite connue** : le lien circule hors du
+système, donc sans traçabilité. À remplacer par un envoi automatique en phase 2.
+
+### 2.19 Le format du téléphone est validé côté serveur uniquement
+
+Les formulaires laissent passer la saisie libre ; `services/phone.py` normalise
+en E.164 et le message d'erreur du serveur est affiché tel quel.
+
+*Pourquoi* : la validité d'un numéro dépend de la région (`DEFAULT_PHONE_REGION`)
+et de la base de `phonenumbers`. Dupliquer cette logique en TypeScript
+produirait deux vérités qui divergeraient. Le client valide ce qui est
+universel (champ requis, format d'e-mail) et délègue le reste.
+
+---
+
 ## 3. Limites connues
 
 À traiter avant une mise en production :
@@ -178,22 +255,28 @@ ne change pas.
 
 ---
 
-## 4. Prochaine étape — M2
+## 4. Prochaine étape — M3 (tournois et désignations)
 
 Dans l'ordre, en suivant les conventions de `CLAUDE.md` :
 
-1. `schemas/referee.py` — invitation, mise à jour admin, filtres de recherche.
-2. `services/referees.py` — invitation (crée `User` + `RefereeProfile` sans mot
-   de passe, renvoie le lien d'invitation), édition, désactivation. Normaliser
-   le téléphone via `services/phone.py` et horodater `whatsapp_opt_in_at` au
-   moment où le consentement passe à vrai.
-3. `api/v1/referees.py` — routes admin, toutes derrière `AdminUser`.
-4. `api/v1/me.py` — `PATCH /me/profile` derrière `RefereeUser`, limité aux
-   champs de `RefereeProfileUpdate`.
-5. Tests : cas nominal, refus anonyme, refus arbitre sur une route admin,
-   arbitre modifiant le profil d'un autre, téléphone invalide, e-mail en double.
-6. Frontend : liste des arbitres (TanStack Query + `Page<T>`), formulaire
-   d'invitation, page profil en écriture.
+1. `schemas/tournament.py` — création, mise à jour, filtres, transitions.
+2. `repositories/tournament.py` et `repositories/assignment.py`.
+3. `services/tournaments.py` — CRUD et transitions de statut. La machine à états
+   est déjà déclarée dans `models/enums.py` (`TOURNAMENT_TRANSITIONS`) : s'y
+   référer plutôt que de réécrire les règles.
+4. `services/assignments.py` — mise à jour différentielle de la liste des
+   arbitres désignés (`PUT /tournaments/{id}/assignments`) : ajoute les nouveaux,
+   annule les retirés, ne touche pas aux inchangés. Règles à faire respecter :
+   pas de désignation sur un tournoi annulé ou terminé, pas de confirmation
+   d'un tournoi passé, un arbitre désactivé n'est pas désignable.
+5. `api/v1/tournaments.py` (admin, plus lecture filtrée pour les arbitres) et
+   les routes de réponse `POST /me/assignments/{id}/confirm` · `/decline`.
+6. Tests : transitions valides et invalides, mise à jour différentielle
+   (ajout/retrait/inchangé), réponse d'un arbitre à une convocation qui n'est
+   pas la sienne (403), confirmation d'un tournoi passé (409).
+7. Frontend : liste et formulaire de tournoi, sélecteur d'arbitres réutilisant
+   les filtres de `features/referees/RefereeFilters.tsx`, page « Mes
+   convocations » avec confirmer/décliner.
 
-`RefereeRepository.search_statement` / `search_page` sont déjà en place pour la
-liste filtrée et paginée.
+Ensuite M4 n'aura plus qu'à brancher `POST /tournaments/{id}/convocations/send`
+et le webhook sur le socle de notification déjà en place (voir 2.4).

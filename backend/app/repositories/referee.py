@@ -19,8 +19,22 @@ class RefereeRepository(BaseRepository[RefereeProfile]):
         statement = select(RefereeProfile).where(RefereeProfile.user_id == user_id)
         return await self.session.scalar(statement)
 
+    async def get_with_user(self, referee_id: uuid.UUID) -> RefereeProfile | None:
+        statement = (
+            select(RefereeProfile)
+            .where(RefereeProfile.id == referee_id)
+            .options(joinedload(RefereeProfile.user))
+        )
+        return await self.session.scalar(statement)
+
     async def get_by_phone(self, phone_e164: str) -> RefereeProfile | None:
         statement = select(RefereeProfile).where(RefereeProfile.phone_e164 == phone_e164)
+        return await self.session.scalar(statement)
+
+    async def get_by_license(self, license_number: str) -> RefereeProfile | None:
+        statement = select(RefereeProfile).where(
+            func.lower(RefereeProfile.license_number) == license_number.strip().lower()
+        )
         return await self.session.scalar(statement)
 
     async def get_many(self, referee_ids: Sequence[uuid.UUID]) -> list[RefereeProfile]:

@@ -42,6 +42,69 @@ export interface TokenResponse {
   expires_in: number
 }
 
+/** Arbitre vu par un administrateur : profil + état du compte. */
+export interface Referee extends RefereeProfile {
+  user_id: string
+  email: string
+  is_active: boolean
+  /** Faux tant que l'invitation n'a pas été acceptée. */
+  has_accepted_invite: boolean
+  created_at: string
+  notes_admin: string | null
+}
+
+export interface RefereeInviteRequest {
+  email: string
+  first_name: string
+  last_name: string
+  phone?: string | null
+  grade: RefereeGrade
+  license_number?: string | null
+  city?: string | null
+  club?: string | null
+  league?: string | null
+  notes_admin?: string | null
+}
+
+export interface RefereeInviteResponse {
+  referee: Referee
+  invite_url: string
+  invite_expires_in_hours: number
+}
+
+export interface RefereeAdminUpdate {
+  first_name?: string
+  last_name?: string
+  phone?: string | null
+  grade?: RefereeGrade
+  license_number?: string | null
+  city?: string | null
+  club?: string | null
+  league?: string | null
+  notes_admin?: string | null
+  whatsapp_opt_in?: boolean
+}
+
+/** Champs qu'un arbitre peut modifier lui-même. */
+export interface MyProfileUpdate {
+  first_name?: string
+  last_name?: string
+  phone?: string | null
+  whatsapp_opt_in?: boolean
+  city?: string | null
+  club?: string | null
+  league?: string | null
+}
+
+export interface RefereeFilters {
+  grade?: RefereeGrade
+  city?: string
+  active?: boolean
+  q?: string
+  page?: number
+  size?: number
+}
+
 export interface Tournament {
   id: string
   title: string
