@@ -5,6 +5,7 @@ import { useAuth } from '@/auth/useAuth'
 import { AppLayout } from '@/components/AppLayout'
 import { DashboardPage } from '@/pages/admin/DashboardPage'
 import { RefereesPage } from '@/pages/admin/RefereesPage'
+import { TournamentDetailPage } from '@/pages/admin/TournamentDetailPage'
 import { TournamentsPage } from '@/pages/admin/TournamentsPage'
 import { AcceptInvitePage } from '@/pages/AcceptInvitePage'
 import { LoginPage } from '@/pages/LoginPage'
@@ -32,6 +33,7 @@ export function App() {
             <Route path="/admin" element={<DashboardPage />} />
             <Route path="/admin/arbitres" element={<RefereesPage />} />
             <Route path="/admin/tournois" element={<TournamentsPage />} />
+            <Route path="/admin/tournois/:tournamentId" element={<TournamentDetailPage />} />
           </Route>
 
           <Route element={<RequireReferee />}>

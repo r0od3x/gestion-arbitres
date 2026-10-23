@@ -116,6 +116,74 @@ export interface Tournament {
   convocation_time: string | null
   referees_needed: number | null
   status: TournamentStatus
+  created_at: string
+}
+
+/** Vue liste : compteurs calculés côté serveur, pas de requête par ligne. */
+export interface TournamentWithCounts extends Tournament {
+  assigned_count: number
+  confirmed_count: number
+}
+
+export interface TournamentCreate {
+  title: string
+  description?: string | null
+  venue?: string | null
+  city: string
+  start_date: string
+  end_date: string
+  convocation_time?: string | null
+  referees_needed?: number | null
+}
+
+export type TournamentUpdate = Partial<TournamentCreate>
+
+export interface TournamentFilters {
+  status?: TournamentStatus
+  city?: string
+  upcoming?: boolean
+  q?: string
+  page?: number
+  size?: number
+}
+
+export interface AssignmentReferee {
+  id: string
+  first_name: string
+  last_name: string
+  phone_e164: string | null
+  whatsapp_opt_in: boolean
+  city: string | null
+}
+
+export interface Assignment {
+  id: string
+  tournament_id: string
+  referee_id: string
+  role_in_tournament: string | null
+  status: AssignmentStatus
+  responded_at: string | null
+  created_at: string
+}
+
+/** Vue administrateur d'une désignation. */
+export interface AssignmentWithReferee extends Assignment {
+  referee: AssignmentReferee
+  notification_status: NotificationStatus | null
+  notification_error: string | null
+  /** Faux si l'arbitre n'a pas consenti ou n'a pas de numéro valide. */
+  is_notifiable: boolean
+}
+
+/** Vue arbitre : « mes convocations ». */
+export interface AssignmentWithTournament extends Assignment {
+  tournament: Tournament
+}
+
+export interface AssignmentsDiff {
+  added: number
+  cancelled: number
+  unchanged: number
 }
 
 export interface Page<T> {
