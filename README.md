@@ -72,13 +72,13 @@ avant tout déploiement.
 
 ```bash
 cd backend
-./.venv/Scripts/python.exe -m pytest tests/ -q      # 99 tests
+./.venv/Scripts/python.exe -m pytest tests/ -q      # 138 tests
 ./.venv/Scripts/python.exe -m ruff check app tests scripts alembic
 ./.venv/Scripts/python.exe -m mypy app scripts      # strict
 ./.venv/Scripts/python.exe -m alembic check         # dérive modèles/migrations
 
 cd ../frontend
-npm test && npm run typecheck && npm run lint && npm run build   # 36 tests
+npm test && npm run typecheck && npm run lint && npm run build   # 58 tests
 ```
 
 ## WhatsApp

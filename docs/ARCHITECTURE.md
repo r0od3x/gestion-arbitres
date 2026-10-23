@@ -3,7 +3,7 @@
 Complète `PROJECT_SPEC.md` : ce document enregistre **ce qui est construit** et
 **les décisions prises en cours de route**, avec leurs raisons.
 
-Dernière mise à jour : 23 octobre 2026 (jalon M2 terminé).
+Dernière mise à jour : 23 octobre 2026 (jalon M3 terminé).
 
 ---
 
@@ -13,7 +13,7 @@ Dernière mise à jour : 23 octobre 2026 (jalon M2 terminé).
 |-------|------|--------|
 | **M1 — Fondations** | ✅ terminé | Squelette, config, Alembic, santé, auth, rôles, amorçage, tests |
 | **M2 — Arbitres** | ✅ terminé | Invitation, liste/filtres, édition, désactivation, consentement WhatsApp |
-| **M3 — Tournois & désignations** | ⬜ à faire | CRUD, transitions de statut, sélection des arbitres, confirmer/décliner |
+| **M3 — Tournois & désignations** | ✅ terminé | CRUD, transitions de statut, sélection des arbitres, confirmer/décliner |
 | **M4 — Notifications WhatsApp** | 🟡 socle prêt | Interface fournisseur, provider Cloud API, worker et suivi de livraison faits ; reste l'endpoint `convocations/send` et le webhook HTTP |
 | **M5 — Finitions** | ⬜ à faire | Boutons de réponse WhatsApp, rappels, journal d'audit, export CSV |
 
@@ -29,13 +29,22 @@ recherche texte, pagination), `POST /referees/invite`, `GET` et `PATCH
 
 **Arbitres (soi-même)** — `GET /me`, `GET` et `PATCH /me/profile`.
 
+**Tournois** — `GET /tournaments` (filtres statut, ville, période, recherche ;
+un arbitre ne voit jamais les brouillons), `POST /tournaments`, `GET` et `PATCH
+/tournaments/{id}`, `POST /tournaments/{id}/publish` · `/cancel` · `/complete`.
+
+**Désignations** — `GET` et `PUT /tournaments/{id}/assignments` (mise à jour
+différentielle), `GET /me/assignments`, `POST /me/assignments/{id}/confirm` ·
+`/decline`.
+
 **Hors HTTP** — les cinq tables via une migration Alembic ; worker ARQ et envoi
 de notifications avec relances.
 
 **SPA React** — connexion, activation de compte par lien d'invitation, gardes
 de route par rôle, liste des arbitres filtrable et paginée, formulaire
 d'invitation avec lien à transmettre, profil arbitre modifiable avec
-consentement WhatsApp.
+consentement WhatsApp, liste des tournois avec transitions de statut, fiche
+tournoi et sélecteur d'arbitres, « mes convocations » avec confirmer/décliner.
 
 Parcours vérifié de bout en bout sur un serveur réel : l'administrateur invite
 un arbitre (téléphone normalisé en E.164) → l'arbitre active son compte via le
@@ -43,7 +52,7 @@ lien → il complète son profil et donne son consentement WhatsApp → ses
 tentatives de changer son grade (422) et d'accéder aux routes admin (403) sont
 refusées → l'administrateur le désactive → il ne peut plus se connecter (401).
 
-**Qualité** : 99 tests backend, 36 tests frontend, `ruff` et `mypy --strict`
+**Qualité** : 138 tests backend, 58 tests frontend, `ruff` et `mypy --strict`
 sans erreur, `eslint` et `prettier` sans erreur, `alembic check` sans dérive.
 
 ---
@@ -248,6 +257,69 @@ universel (champ requis, format d'e-mail) et délègue le reste.
 
 ---
 
+### 2.20 La machine à états est déclarée, pas dispersée
+
+`TOURNAMENT_TRANSITIONS` (dans `models/enums.py`) énumère les transitions
+autorisées ; `TournamentService.change_status` la consulte au lieu d'enchaîner
+des `if`.
+
+*Pourquoi* : les règles tiennent en quatre lignes lisibles d'un coup d'œil, et
+le frontend dérive de la même table les boutons qu'il affiche. Ajouter un
+statut se fait à un seul endroit.
+
+### 2.21 Les désignations sont mises à jour en différentiel
+
+`PUT /tournaments/{id}/assignments` reçoit la **liste cible complète** des
+arbitres, puis ajoute les manquants, annule les retirés et ne touche pas aux
+autres. La réponse indique `{added, cancelled, unchanged}`.
+
+*Pourquoi* : un remplacement (tout supprimer, tout recréer) détruirait les
+réponses déjà données par les arbitres et l'historique de leurs notifications à
+chaque enregistrement. Le différentiel conserve l'identité des lignes
+inchangées, donc leur `status`, leur `responded_at` et leurs notifications.
+Vérifié dans un vrai navigateur : un arbitre confirme, l'administrateur retire
+*un autre* arbitre et enregistre, la confirmation survit.
+
+### 2.22 Une désignation annulée est conservée, pas supprimée
+
+Retirer un arbitre passe sa désignation à `cancelled` ; la ligne reste en base
+et les listes l'excluent par défaut (`include_cancelled=false`).
+
+*Pourquoi* : la contrainte `UNIQUE (tournament_id, referee_id)` interdit de
+recréer une ligne identique, et l'historique « a été convoqué puis retiré » a
+une valeur en cas de litige. Re-convoquer un arbitre annulé remet sa
+désignation à `pending` et efface sa réponse précédente : c'est une nouvelle
+convocation, il doit répondre à nouveau.
+
+### 2.23 Un brouillon renvoie 404 à un arbitre, pas 403
+
+`get_visible_for_referee` traite les tournois non publiés comme inexistants.
+
+*Pourquoi* : un 403 confirmerait qu'un tournoi existe à cet identifiant. Tant
+qu'il n'est pas publié, il ne doit rien révéler.
+
+### 2.24 Les compteurs d'effectif sont calculés en une requête
+
+`TournamentRepository.assignment_counts` agrège désignés et confirmés pour
+toute la page d'un coup.
+
+*Pourquoi* : afficher « 2/4 désignés, 1 confirmé » par ligne sans cela voudrait
+dire une requête par tournoi (N+1). Les désignations annulées sont exclues du
+compte : elles ne représentent pas un effectif.
+
+### 2.25 La sélection d'arbitres est dérivée, jamais recopiée
+
+`RefereePicker` garde un brouillon `null` tant que l'utilisateur n'a rien
+coché ; l'affichage suit alors le serveur. Au premier clic, le brouillon prend
+le relais ; après un enregistrement réussi, il repasse à `null`.
+
+*Pourquoi* : la version initiale synchronisait l'état serveur dans un
+`useState` via un `useEffect`, ce qu'ESLint signale à juste titre. Une valeur
+dérivée ne peut pas se désynchroniser de sa source, et la liste se rafraîchit
+toute seule après enregistrement.
+
+---
+
 ## 3. Limites connues
 
 À traiter avant une mise en production :
@@ -269,28 +341,30 @@ universel (champ requis, format d'e-mail) et délègue le reste.
 
 ---
 
-## 4. Prochaine étape — M3 (tournois et désignations)
+## 4. Prochaine étape — M4 (notifications WhatsApp)
 
-Dans l'ordre, en suivant les conventions de `CLAUDE.md` :
+Le socle est déjà en place (voir 2.4) : interface fournisseur, provider Cloud
+API, worker ARQ, relances et suivi de livraison, tous testés. Il reste à les
+brancher sur HTTP :
 
-1. `schemas/tournament.py` — création, mise à jour, filtres, transitions.
-2. `repositories/tournament.py` et `repositories/assignment.py`.
-3. `services/tournaments.py` — CRUD et transitions de statut. La machine à états
-   est déjà déclarée dans `models/enums.py` (`TOURNAMENT_TRANSITIONS`) : s'y
-   référer plutôt que de réécrire les règles.
-4. `services/assignments.py` — mise à jour différentielle de la liste des
-   arbitres désignés (`PUT /tournaments/{id}/assignments`) : ajoute les nouveaux,
-   annule les retirés, ne touche pas aux inchangés. Règles à faire respecter :
-   pas de désignation sur un tournoi annulé ou terminé, pas de confirmation
-   d'un tournoi passé, un arbitre désactivé n'est pas désignable.
-5. `api/v1/tournaments.py` (admin, plus lecture filtrée pour les arbitres) et
-   les routes de réponse `POST /me/assignments/{id}/confirm` · `/decline`.
-6. Tests : transitions valides et invalides, mise à jour différentielle
-   (ajout/retrait/inchangé), réponse d'un arbitre à une convocation qui n'est
-   pas la sienne (403), confirmation d'un tournoi passé (409).
-7. Frontend : liste et formulaire de tournoi, sélecteur d'arbitres réutilisant
-   les filtres de `features/referees/RefereeFilters.tsx`, page « Mes
-   convocations » avec confirmer/décliner.
+1. `services/convocations.py` — pour chaque désignation `pending` d'un tournoi
+   **publié** sans notification `convocation` déjà envoyée : créer une ligne
+   `notifications` (`queued`) et enfiler un job. Les arbitres dont
+   `is_notifiable` est faux reçoivent directement une notification `failed`
+   avec un motif clair, déjà exposé dans la liste des désignations.
+2. `POST /tournaments/{id}/convocations/send` et
+   `POST /assignments/{id}/notifications/resend` (admin).
+3. `api/v1/webhooks.py` — `GET /webhooks/whatsapp` (défi de vérification avec
+   `WHATSAPP_VERIFY_TOKEN`) et `POST` (signature `X-Hub-Signature-256` vérifiée
+   par `verify_webhook_signature`, puis `apply_provider_status`). Le webhook
+   doit répondre 200 même sur un message inconnu, sinon Meta réessaie en boucle.
+4. Créer le template `convocation_tournoi` côté Meta (voir
+   `PROJECT_SPEC.md` §6) ; en développement, garder `NOTIFICATION_PROVIDER=console`.
+5. Tests : idempotence (deux envois ne produisent pas deux messages), arbitre
+   sans consentement marqué `failed`, webhook à signature invalide rejeté (403),
+   webhook dans le désordre ignoré (déjà couvert côté service).
+6. Frontend : colonne « statut de notification » dans la fiche tournoi, bouton
+   « Envoyer les convocations » et relance individuelle.
 
-Ensuite M4 n'aura plus qu'à brancher `POST /tournaments/{id}/convocations/send`
-et le webhook sur le socle de notification déjà en place (voir 2.4).
+`AssignmentWithReferee` porte déjà `notification_status`, `notification_error`
+et `is_notifiable` : l'interface n'aura pas besoin d'un nouvel appel.
