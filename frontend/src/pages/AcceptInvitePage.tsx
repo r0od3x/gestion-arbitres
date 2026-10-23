@@ -4,8 +4,9 @@ import { useForm } from 'react-hook-form'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { z } from 'zod'
 
-import { ApiError, api, setAccessToken } from '@/api/client'
+import { ApiError, api } from '@/api/client'
 import type { TokenResponse } from '@/api/types'
+import { useAuth } from '@/auth/useAuth'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Field } from '@/components/ui/field'
@@ -26,6 +27,7 @@ const acceptSchema = z
 type AcceptValues = z.infer<typeof acceptSchema>
 
 export function AcceptInvitePage() {
+  const { adoptSession } = useAuth()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const token = searchParams.get('token')
@@ -44,9 +46,10 @@ export function AcceptInvitePage() {
         token,
         password: values.password,
       })
-      // Le compte est actif : on enchaîne directement sur l'espace arbitre.
-      setAccessToken(tokens.access_token)
-      navigate('/mon-profil', { replace: true })
+      // Le compte est actif : on enchaîne directement sur l'espace de
+      // l'utilisateur qui vient de l'activer, jamais sur une session restante.
+      const user = await adoptSession(tokens.access_token)
+      navigate(user.role === 'admin' ? '/admin' : '/mon-profil', { replace: true })
     } catch (error) {
       setFormError(error instanceof ApiError ? error.detail : t('common.error'))
     }

@@ -55,6 +55,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return me
   }, [])
 
+  const adoptSession = useCallback(
+    async (accessToken: string): Promise<CurrentUser> => {
+      // Le cache peut contenir les données de la session précédente.
+      queryClient.clear()
+      setAccessToken(accessToken)
+      const me = await api.get<CurrentUser>('/auth/me')
+      setUser(me)
+      setIsLoading(false)
+      return me
+    },
+    [queryClient],
+  )
+
   const logout = useCallback(async () => {
     try {
       await api.post('/auth/logout')
@@ -70,9 +83,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: user !== null,
       isAdmin: user?.role === 'admin',
       login,
+      adoptSession,
       logout,
     }),
-    [user, isLoading, login, logout],
+    [user, isLoading, login, adoptSession, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

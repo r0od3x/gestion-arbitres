@@ -43,7 +43,7 @@ lien → il complète son profil et donne son consentement WhatsApp → ses
 tentatives de changer son grade (422) et d'accéder aux routes admin (403) sont
 refusées → l'administrateur le désactive → il ne peut plus se connecter (401).
 
-**Qualité** : 99 tests backend, 30 tests frontend, `ruff` et `mypy --strict`
+**Qualité** : 99 tests backend, 36 tests frontend, `ruff` et `mypy --strict`
 sans erreur, `eslint` et `prettier` sans erreur, `alembic check` sans dérive.
 
 ---
@@ -221,6 +221,20 @@ permet de copier.
 brique bloquerait tout le parcours d'intégration. L'administrateur transmet le
 lien par le canal de son choix. **Limite connue** : le lien circule hors du
 système, donc sans traçabilité. À remplacer par un envoi automatique en phase 2.
+
+### 2.19bis Les changements de session passent tous par `AuthProvider`
+
+`adoptSession(accessToken)` est le seul moyen d'ouvrir une session autrement
+qu'avec un mot de passe. La page d'activation d'invitation l'appelle au lieu de
+poser le jeton directement sur le client HTTP.
+
+*Pourquoi* : trouvé en pilotant l'application dans un vrai navigateur. La page
+d'activation posait le jeton sur le client HTTP sans prévenir l'état React.
+Sur un navigateur où un administrateur était déjà connecté, l'arbitre qui
+activait son compte atterrissait **dans la session de l'administrateur** : les
+gardes de route lisaient l'utilisateur périmé. `adoptSession` vide le cache de
+requêtes, pose le jeton, recharge `/auth/me` et met l'état à jour — dans cet
+ordre. Couvert par un test de non-régression.
 
 ### 2.19 Le format du téléphone est validé côté serveur uniquement
 

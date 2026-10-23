@@ -78,7 +78,7 @@ cd backend
 ./.venv/Scripts/python.exe -m alembic check         # dérive modèles/migrations
 
 cd ../frontend
-npm test && npm run typecheck && npm run lint && npm run build   # 30 tests
+npm test && npm run typecheck && npm run lint && npm run build   # 36 tests
 ```
 
 ## WhatsApp

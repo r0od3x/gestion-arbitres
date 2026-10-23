@@ -9,6 +9,13 @@ export interface AuthState {
   isAuthenticated: boolean
   isAdmin: boolean
   login: (email: string, password: string) => Promise<CurrentUser>
+  /**
+   * Adopte une session obtenue autrement qu'avec un mot de passe (acceptation
+   * d'invitation, par exemple). Passe toujours par ici : poser le jeton
+   * directement sur le client HTTP laisserait l'état React sur l'utilisateur
+   * précédent, et les gardes de route décideraient d'après lui.
+   */
+  adoptSession: (accessToken: string) => Promise<CurrentUser>
   logout: () => Promise<void>
 }
 
