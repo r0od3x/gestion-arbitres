@@ -1,0 +1,73 @@
+# Environnement de développement complet : docker compose up
+name: gestion-arbitres
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: arbitres
+      POSTGRES_PASSWORD: arbitres
+      POSTGRES_DB: arbitres
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arbitres -d arbitres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports: ["6379:6379"]
+    volumes: ["redisdata:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: ./backend
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://arbitres:arbitres@db:5432/arbitres
+      REDIS_URL: redis://redis:6379/0
+    # Les migrations tournent au démarrage : la base est toujours au bon schéma.
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    ports: ["8000:8000"]
+    volumes: ["./backend:/srv"]
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+
+  worker:
+    build: ./backend
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://arbitres:arbitres@db:5432/arbitres
+      REDIS_URL: redis://redis:6379/0
+    command: ["arq", "app.worker.settings.WorkerSettings"]
+    volumes: ["./backend:/srv"]
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+
+  web:
+    image: node:20-alpine
+    working_dir: /app
+    environment:
+      VITE_API_URL: http://localhost:8000/api/v1
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    ports: ["5173:5173"]
+    volumes:
+      - ./frontend:/app
+      # Volume anonyme : garde les node_modules du conteneur (binaires Linux).
+      - /app/node_modules
+    depends_on: [api]
+
+volumes:
+  pgdata:
+  redisdata:

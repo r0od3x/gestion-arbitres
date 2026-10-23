@@ -1,0 +1,6 @@
+# Normalise les fins de ligne : LF dans le dépôt, natif dans la copie de travail.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
